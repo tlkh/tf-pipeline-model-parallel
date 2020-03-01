@@ -50,8 +50,14 @@ class ParallelCNN(tf.keras.Model):
             return ret
 
     def call(self, inputs):
+        inputs, nvtx_context = nvtx_tf.ops.start(inputs, message='forward_1',
+                                                 domain_name='forward', grad_domain_name='grad')
         x = self.forward_1(inputs)
+        x = nvtx_tf.ops.end(x, nvtx_context)
+        x, nvtx_context = nvtx_tf.ops.start(x, message='forward_2',
+                                            domain_name='forward', grad_domain_name='grad')
         ret = self.forward_2(x)
+        ret = nvtx_tf.ops.end(ret, nvtx_context)
         return ret
         
 
@@ -96,34 +102,47 @@ class PipelineCNN(tf.keras.Model):
         with tf.device('/GPU:0'):
             splits = tf.split(inputs, self.splits, axis=0, num=self.splits, name="split_batch")
         
+        # pipe 1
+        
         pipe_1 = splits[0]
-        pipe_1, nvtx_context = nvtx_tf.ops.start(pipe_1, message='pipe_1',
-                                                 domain_name='forward', grad_domain_name='grad')
+        
+        pipe_1, nvtx_context_p1 = nvtx_tf.ops.start(pipe_1, message='pipe_1',
+                                                    domain_name='forward', grad_domain_name='grad')
+        
+        pipe_1, nvtx_context_p1f1 = nvtx_tf.ops.start(pipe_1, message='p1_forward_1',
+                                                      domain_name='forward', grad_domain_name='grad')
         pipe_1 = self.forward_1(pipe_1)
+        pipe_1 = nvtx_tf.ops.end(pipe_1, nvtx_context_p1f1)
+        
+        pipe_1, nvtx_context_p1f2 = nvtx_tf.ops.start(pipe_1, message='p1_forward_2',
+                                                      domain_name='forward', grad_domain_name='grad')
         pipe_1 = self.forward_2(pipe_1)
-        pipe_1 = nvtx_tf.ops.end(pipe_1, nvtx_context)
+        pipe_1 = nvtx_tf.ops.end(pipe_1, nvtx_context_p1f2)
+        
+        pipe_1 = nvtx_tf.ops.end(pipe_1, nvtx_context_p1)
+        
+         # pipe 2
         
         pipe_2 = splits[1]
-        pipe_2, nvtx_context = nvtx_tf.ops.start(pipe_2, message='pipe_2',
+        
+        pipe_2, nvtx_context_p2 = nvtx_tf.ops.start(pipe_2, message='pipe_2',
                                                  domain_name='forward', grad_domain_name='grad')
+        
+        pipe_2, nvtx_context_p2f1 = nvtx_tf.ops.start(pipe_2, message='p2_forward_1',
+                                                      domain_name='forward', grad_domain_name='grad')
         pipe_2 = self.forward_1(pipe_2)
+        pipe_2 = nvtx_tf.ops.end(pipe_2, nvtx_context_p2f1)
+        
+        pipe_2, nvtx_context_p2f2 = nvtx_tf.ops.start(pipe_2, message='p2_forward_2',
+                                                      domain_name='forward', grad_domain_name='grad')
         pipe_2 = self.forward_2(pipe_2)
-        pipe_2 = nvtx_tf.ops.end(pipe_2, nvtx_context)
+        pipe_2 = nvtx_tf.ops.end(pipe_2, nvtx_context_p2f2)
+        
+        pipe_2 = nvtx_tf.ops.end(pipe_2, nvtx_context_p2)
         
         with tf.device('/GPU:1'):
             ret = tf.concat([pipe_1, pipe_2], 0, name="concat_batch")
             return ret
-        
-    def backward_grads(self, y, dy, training=True):
-        with tf.GradientTape() as tape:
-            tape.watch(y)
-            gy1 = self.g(y, training=training)
-            
-        grads_combined = gtape.gradient(gy1, [y1] + self.g.trainable_variables, output_gradients=dy2)
-        dg = grads_combined[1:]
-        dx1 = dy1 + grads_combined[0]
-        x2 = y2 - gy1
-        return x, dx, grads
         
         
 class SingleCNN(tf.keras.Model):
