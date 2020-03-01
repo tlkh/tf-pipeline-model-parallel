@@ -6,7 +6,7 @@ In model parallelism (not data parallelism!), different partitions of the model 
 
 ## Toy Experiment (small CNN model)
 
-In the diagrams below, only the forward pass is annotated. 
+In the diagrams below, only the forward pass is annotated with [NVTX](https://github.com/NVIDIA/nvtx-plugins).
 
 **Normal Model Parallel**
 
